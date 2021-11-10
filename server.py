@@ -26,4 +26,6 @@ class User:
 OnlineUserList: List[User] = []
 AllUserList: List[str] = []
 
-
+class Server:
+    def __init__(self, ):
+        pass
