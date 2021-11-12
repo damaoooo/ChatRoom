@@ -20,6 +20,7 @@ class User:
         self.tcp_unit = TCPUnit(conn, recv_queue=queue.Queue(self.queue_size))
         self.login_time = int(time.time())
         self.update_time = int(time.time())
+        LoginLog.append([self.username, self.login_time])
         self.die = False
         m = Message("broadcast", "system", f"User {self.username} online!")
         self._broadcast(m, system=True)
@@ -73,6 +74,9 @@ class User:
                 m.content = res
                 self.send(m)
 
+            elif m.type == 'whoelsesince':
+                self._whoelsesince(m)
+
             elif m.type == 'logout':
                 self.go_die(m)
 
@@ -88,6 +92,12 @@ class User:
             elif m.type == 'unblock':
                 self._unblock(m)
 
+            elif m.type == 'startprivate':
+                self._startprivate(m)
+
+            elif m.type == "private_reply":
+                self._private_reply(m)
+
     def _whoelse(self):
         res = []
         for k in OnlineUserList:
@@ -95,6 +105,21 @@ class User:
                 continue
             res.append(k)
         return '\n'.join(res)
+
+    def _whoelsesince(self, m: Message):
+        res = []
+        duration = int(m.to)
+        now = int(time.time())
+        for i in LoginLog:
+            user, logtime = i
+            if now - logtime < duration:
+                if user == self.username or self.username in AllUserList[user].block_list:
+                    continue
+                res.append(user)
+        res = '\n'.join(res)
+        reply = Message("reply_whoelsesince", "server", res)
+        self.send(reply)
+
 
     def _broadcast(self, m: Message, system=False):
         new_m = m
@@ -113,6 +138,29 @@ class User:
         if not system:
             reply_m = Message("reply_broadcast", "server", "message could not be sent to some recipients.")
             self.send(reply_m)
+
+    def _startprivate(self, m: Message):
+        reply = Message("reply_startprivate", "server", "")
+        if m.to not in AllUserList:
+            reply.content = "Error. No Such User"
+        elif m.to not in OnlineUserList:
+            reply.content = f"Error. User {m.to} is offline"
+        elif m.to in OnlineUserList[m.to].block_list:
+            reply.content = f"Error. User {m.to} Blocked you!"
+        else:
+            reply.to = self.username
+            reply.type = m.type
+            reply.content = m.content
+            OnlineUserList[m.to].send(reply)
+            return
+        self.send(reply)
+
+    def _private_reply(self, m: Message):
+        reply = Message("", "", "")
+        reply.type = m.type
+        reply.to = self.username
+        reply.content = m.content
+        OnlineUserList[m.to].send(reply)
 
     def _message(self, m: Message):
         reply_m = Message("", "", "")
@@ -185,6 +233,7 @@ class User:
             return True, ''
 
 
+LoginLog = []
 MessageBuffer: Dict[str, List[Message]] = {}  # TODO: When user open his window, display history message
 OnlineUserList: Dict[str, User] = {}
 AllUserList: Dict[str, User] = {}
@@ -261,7 +310,14 @@ class Server:
             password = conn_socket.recv(self.buf_size).decode().replace('\n', '')
             debug_print(f'user input password {password}')
             AllUserList[username] = User(username, password, self.timeout)
-            conn_socket.send("Success".encode())
+            conn_socket.send(f"Success|{username}".encode())
+            with open('./credentials.txt', 'r+') as f:
+                content = f.read()
+                content += '\n' + ' '.join([username, password])
+                f.seek(0)
+                f.write(content)
+                f.close()
+
             return True, username
         else:
             conn_socket.send("Input password:".encode())
@@ -276,7 +332,7 @@ class Server:
                         conn_socket.send("Invalid password 3 times, you are blocked".encode())
                         return False, ""
                 else:
-                    conn_socket.send("Success".encode())
+                    conn_socket.send(f"Success|{username}".encode())
                     return True, username
             return False, ''
 

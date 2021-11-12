@@ -112,5 +112,5 @@ class TCPUnit:
                         p = self.new_package(p)
                         self.recv_queue.put(p)
                     buffer = self.split.join(buffer)
-            except ConnectionResetError:
+            except (ConnectionResetError, OSError, ValueError):
                 self.go_die(Message("go die", "", "Connection Reset Error"))
