@@ -97,19 +97,20 @@ class TCPUnit:
             try:
                 if self.die:
                     return
-                rw, ww, xw = select.select([self.sock], [self.sock], [self.sock], 0.1)
+                rw, ww, xw = select.select([self.sock], [self.sock], [self.sock], 0.01)
                 if rw:
                     r = self.sock.recv(self.buf_size)
                     if len(r) == 0:
                         continue
                     buffer += r
                     buffer = buffer.split(self.split)
-                    p = buffer[0]
-                    if p == b'' or (b'{' not in p and '}' not in p):
-                        continue
-                    buffer = b''.join(buffer[1:])
-                    debug_print(p)
-                    p = self.new_package(p)
-                    self.recv_queue.put(p)
+                    for i in range(len(buffer) - 1):
+                        p = buffer.pop(0)
+                        if p == b'' or (b'{' not in p and '}' not in p):
+                            continue
+                        debug_print(p)
+                        p = self.new_package(p)
+                        self.recv_queue.put(p)
+                    buffer = self.split.join(buffer)
             except ConnectionResetError:
                 self.go_die(Message("go die", "", "Connection Reset Error"))
