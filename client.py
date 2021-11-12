@@ -22,8 +22,19 @@ class Client:
             self.s.send(s)
 
     def command_parser(self, command: str):
+
+        m = Message("whoelse", "", "")
         if command.startswith("message"):  # TODO: split command as Message
-            pass
+            c = command.split(' ')
+            if len(c) < 3:
+                print("Not a good message command")
+                print("message <user> <message>")
+            m = Message(c[0], c[1], ' '.join(c[2:]))
+
+        elif command.startswith("whoelse"):
+            m = Message("whoelse", "", "")
+
+        self.tcp_unit.send_message(m)
 
     def run(self):  # TODO: when user type in keyboard, invoke input()
         self.authentication()
