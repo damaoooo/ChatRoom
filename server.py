@@ -87,28 +87,30 @@ class Server:
             AllUserList[username] = password
 
     def authentication(self, conn_socket: socket.socket):
+        conn_socket.send("Welcome, Input Your Username:".encode())
         username = conn_socket.recv(self.buf_size).decode().replace('\n', '')
-        self.debug_print(f'user input username{username}')
+        self.debug_print(f'user input username {username}')
         if username in OnlineUserList:
             conn_socket.send("User Already Login".encode())
             conn_socket.close()
             return False
         elif username not in AllUserList:
-            conn_socket.send("New User".encode())
+            conn_socket.send("New User, Input Your Password".encode())
             password = conn_socket.recv(self.buf_size).decode().replace('\n', '')
             self.debug_print(f'user input password {password}')
             AllUserList[username] = password
-
+            conn_socket.send("Success".encode())
             return True
         else:
+            conn_socket.send("Input password:".encode())
             for i in range(3):
-                conn_socket.send("Input password".encode())
                 password = conn_socket.recv(self.buf_size).decode().replace('\n', '')
                 self.debug_print(f'user input password {password}')
                 if password != AllUserList[username]:
-                    conn_socket.send("Invalid password".encode())
+                    conn_socket.send("Invalid password, Input Again:".encode())
                     continue
                 else:
+                    conn_socket.send("Success".encode())
                     return True
             return False
 
@@ -132,8 +134,7 @@ class Server:
         print("Next")
 
 
-
-s = Server(7676, 7, 7)
+s = Server(7676, 20, 20)
 s.main_loop()
 
 

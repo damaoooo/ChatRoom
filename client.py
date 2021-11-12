@@ -6,14 +6,16 @@ class Client:
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.connect(('127.0.0.1', server_port))
 
-    def run(self):
-        print("start")
+    def authentication(self):
+        print("Login ... ")
         while 1:
-
+            r = self.s.recv(4096).decode()
+            if r == 'Success':
+                return True
+            print(r)
             s = input().encode()
             self.s.send(s)
-            print(self.s.recv(4096).decode())
 
 
 c = Client(7676)
-c.run()
+c.authentication()
