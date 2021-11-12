@@ -5,6 +5,14 @@ import socket
 import threading
 from dataclasses import dataclass
 
+debug = True
+
+
+def debug_print(content):
+    if debug:
+        print(content)
+
+
 try:
     from msvcrt import kbhit
 except ImportError:
@@ -68,6 +76,10 @@ class TCPUnit:
         b += self.split
         self.sock.send(b)
 
+    def go_die(self, reason):
+        self.recv_queue.put(reason)
+        self.die = True
+
     def new_package(self, t: bytes):
         r = json.loads(t)
         new_m = Message('', '', '')
@@ -82,16 +94,22 @@ class TCPUnit:
     def recv_message(self):
         buffer = b''
         while 1:
-            if self.die:
-                break
-            rw, ww, xw = select.select([self.sock], [self.sock], [self.sock], 0.1)
-            if rw:
-                r = self.sock.recv(self.buf_size)
-                if len(r) == '':
-                    continue
-                buffer += r
-                buffer = buffer.split(self.split)
-                p = buffer[0]
-                buffer = b''.join(buffer[1:])
-                p = self.new_package(p)
-                self.recv_queue.put(p)
+            try:
+                if self.die:
+                    return
+                rw, ww, xw = select.select([self.sock], [self.sock], [self.sock], 0.1)
+                if rw:
+                    r = self.sock.recv(self.buf_size)
+                    if len(r) == 0:
+                        continue
+                    buffer += r
+                    buffer = buffer.split(self.split)
+                    p = buffer[0]
+                    if p == b'' or (b'{' not in p and '}' not in p):
+                        continue
+                    buffer = b''.join(buffer[1:])
+                    debug_print(p)
+                    p = self.new_package(p)
+                    self.recv_queue.put(p)
+            except ConnectionResetError:
+                self.go_die(Message("go die", "", "Connection Reset Error"))

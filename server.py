@@ -20,11 +20,31 @@ class User:
     def update(self):
         self.update_time = int(time.time())
 
+    def timer(self):
+        while 1:
+            time.sleep(0.05)
+            t = int(time.time())
+            if t - self.update_time > self.expire_time:
+                self.go_die(Message("go die", "", "Time Expire"), send=True)
+                break
+
+    def go_die(self, reason, send=False):
+        if send:
+            self.tcp_unit.send_message(reason)
+        self.tcp_unit.go_die(reason)
+        self.die = True
+        self.tcp_unit.recv_queue.put(reason)
+        self.tcp_unit.sock.close()
+        OnlineUserList.pop(self.username)
+
     def main_loop(self):
         while 1:
             if self.die:
                 break
             m: Message = self.tcp_unit.get_message()
+            if m.type == 'go die' or m.type == 'logout':
+                return
+            self.update()
             if m.type == 'whoelse':
                 res = self._whoelse()
                 m = Message('', '', '')
@@ -32,6 +52,9 @@ class User:
                 m.type = "reply_whoelse"
                 m.content = res
                 self.tcp_unit.send_message(m)
+            elif m.type == 'logout':
+                self.go_die(m)
+
 
     def _whoelse(self):
         res = []
@@ -39,7 +62,7 @@ class User:
             if k == self.username or k in self.block_list:
                 continue
             res.append(k)
-        return '\n'.join(res).encode()
+        return '\n'.join(res)
 
     def __str__(self):
         t = time.localtime(self.login_time)
@@ -93,20 +116,15 @@ class Timer:
 
 
 class Server:
-    def __init__(self, server_port: int, block_duration: int, timeout: int, debug=True):
+    def __init__(self, server_port: int, block_duration: int, timeout: int):
         self.server_port = server_port
         self.block_duration = block_duration
-        self.debug = debug
         self.timeout = timeout
         self.queue_size = 32
         self.buf_size = 4096
         self.read_file()
         self.timer = Timer(block_duration)
         self.sock: socket.socket = self.prepare_socket()
-
-    def debug_print(self, content):
-        if self.debug:
-            print(content)
 
     def prepare_socket(self) -> socket.socket:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -125,7 +143,7 @@ class Server:
     def authentication(self, conn_socket: socket.socket):
         conn_socket.send("Welcome, Input Your Username:".encode())
         username = conn_socket.recv(self.buf_size).decode().replace('\n', '')
-        self.debug_print(f'user input username {username}')
+        debug_print(f'user input username {username}')
         if username in OnlineUserList.keys():
             conn_socket.send("User Already Login".encode())
             conn_socket.close()
@@ -133,7 +151,7 @@ class Server:
         elif username not in AllUserList:
             conn_socket.send("New User, Input Your Password".encode())
             password = conn_socket.recv(self.buf_size).decode().replace('\n', '')
-            self.debug_print(f'user input password {password}')
+            debug_print(f'user input password {password}')
             AllUserList[username] = password
             conn_socket.send("Success".encode())
             return True, username
@@ -141,7 +159,7 @@ class Server:
             conn_socket.send("Input password:".encode())
             for i in range(3):
                 password = conn_socket.recv(self.buf_size).decode().replace('\n', '')
-                self.debug_print(f'user input password {password}')
+                debug_print(f'user input password {password}')
                 if password != AllUserList[username]:
                     conn_socket.send("Invalid password, Input Again:".encode())
                     continue
@@ -153,7 +171,7 @@ class Server:
     def main_loop(self):
         while True:
             conn, addr = self.sock.accept()
-            self.debug_print(f'{addr} - connected!')
+            debug_print(f'{addr} - connected!')
             threading.Thread(target=self.pre_run, args=(conn, addr)).start()
 
     def pre_run(self, conn, addr):
@@ -176,12 +194,10 @@ class Server:
         self.run(user)
 
     def run(self, user: User):
+        OnlineUserList[user.username] = user
         user.tcp_unit.start()
         user.main_loop()
 
 
 s = Server(7676, 20, 20)
 s.main_loop()
-
-
-

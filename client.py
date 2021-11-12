@@ -16,6 +16,7 @@ class Client:
         while 1:
             r = self.s.recv(4096).decode()
             if r == 'Success':
+                print("Success Login!")
                 return True
             print(r)
             s = input().encode()
@@ -34,22 +35,40 @@ class Client:
         elif command.startswith("whoelse"):
             m = Message("whoelse", "", "")
 
+        elif command.startswith('logout'):
+            m = Message("logout", "", "")
+            self.go_die(m)
+
         self.tcp_unit.send_message(m)
 
-    def run(self):  # TODO: when user type in keyboard, invoke input()
+    def run(self):
         self.authentication()
         self.tcp_unit.start()
+        threading.Thread(target=self.get_message).start()
         while 1:
-            if self.die:
-                break
+            try:
+                if kbhit():
+                    message = input()
+                    self.command_parser(message)
+                if self.die:
+                    break
+            except KeyboardInterrupt:
+                self.go_die(Message("go die", "", "User Abort"))
+                exit(-1)
+
+    def get_message(self):
+        while 1:
             m: Message = self.tcp_unit.get_message()
             if 'reply_' in m.type:
                 print(m.content)
+            elif 'go die' == m.type:
+                print(m.content)
+                return
 
-    def exit(self):
+    def go_die(self, reason):
         # TODO: end ALL threads and exit
         self.die = True
-        self.tcp_unit.die = True
+        self.tcp_unit.go_die(reason)
 
 
 c = Client(7676)
