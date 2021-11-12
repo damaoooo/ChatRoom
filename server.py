@@ -1,3 +1,5 @@
+import argparse
+
 from utils import *
 import time
 from typing import List, Dict
@@ -119,7 +121,6 @@ class User:
         res = '\n'.join(res)
         reply = Message("reply_whoelsesince", "server", res)
         self.send(reply)
-
 
     def _broadcast(self, m: Message, system=False):
         new_m = m
@@ -354,5 +355,9 @@ class Server:
         user.main_loop()
 
 
-s = Server(7676, 20, 600)
-s.main_loop()
+if __name__ == '__main__':
+    a = argparse.ArgumentParser()
+    a.add_argument('args', nargs='+', type=int)
+    a = a.parse_args()
+    s = Server(a.args[0], a.args[1], a.args[2])
+    s.main_loop()

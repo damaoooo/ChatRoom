@@ -1,5 +1,5 @@
 import time
-
+import argparse
 from utils import *
 
 
@@ -323,5 +323,9 @@ class Client:
         print(m.content)
 
 
-c = Client(7676)
-c.run()
+if __name__ == '__main__':
+    a = argparse.ArgumentParser()
+    a.add_argument('args', type=int)
+    a = a.parse_args()
+    c = Client(a.args)
+    c.run()
