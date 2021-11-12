@@ -5,11 +5,46 @@ import threading
 
 
 class User:
-    def __init__(self, expire_time: int, private_socket: socket.socket):
+    def __init__(self, username: str, expire_time: int, private_socket: socket.socket):
         self.expire_time = expire_time
         self.private_socket = private_socket
+        self.username = username
+        self.login_time = int(time.time())
+        self.update_time = int(time.time())
         self.block_list: List[str] = []
+        self.queue_size = 32
+        self.die = False
         self.send_list: List[Message] = []
+        self.tcp_unit = TCPUnit(self.private_socket, recv_queue=queue.Queue(self.queue_size))
+
+    def update(self):
+        self.update_time = int(time.time())
+
+    def main_loop(self):
+        while 1:
+            if self.die:
+                break
+            m: Message = self.tcp_unit.get_message()
+            if m.type == 'whoelse':
+                res = self._whoelse()
+                m = Message('', '', '')
+                m.to = self.username
+                m.type = "reply_whoelse"
+                m.content = res
+                self.tcp_unit.send_message(m)
+
+    def _whoelse(self):
+        res = []
+        for k in OnlineUserList:
+            if k == self.username or k in self.block_list:
+                continue
+            res.append(k)
+        return '\n'.join(res).encode()
+
+    def __str__(self):
+        t = time.localtime(self.login_time)
+        t = time.strftime("%Y-%m-%d %H:%M:%S", t)
+        return f"User: {self.username} - login {t}"
 
     def add_block(self, username):
         if username in self.block_list:
@@ -28,7 +63,7 @@ class User:
             return True, ''
 
 
-OnlineUserList: List[User] = []
+OnlineUserList: Dict[str, User] = {}
 AllUserList: Dict[str, str] = {}
 
 
@@ -63,6 +98,7 @@ class Server:
         self.block_duration = block_duration
         self.debug = debug
         self.timeout = timeout
+        self.queue_size = 32
         self.buf_size = 4096
         self.read_file()
         self.timer = Timer(block_duration)
@@ -90,17 +126,17 @@ class Server:
         conn_socket.send("Welcome, Input Your Username:".encode())
         username = conn_socket.recv(self.buf_size).decode().replace('\n', '')
         self.debug_print(f'user input username {username}')
-        if username in OnlineUserList:
+        if username in OnlineUserList.keys():
             conn_socket.send("User Already Login".encode())
             conn_socket.close()
-            return False
+            return False, ''
         elif username not in AllUserList:
             conn_socket.send("New User, Input Your Password".encode())
             password = conn_socket.recv(self.buf_size).decode().replace('\n', '')
             self.debug_print(f'user input password {password}')
             AllUserList[username] = password
             conn_socket.send("Success".encode())
-            return True
+            return True, username
         else:
             conn_socket.send("Input password:".encode())
             for i in range(3):
@@ -111,17 +147,21 @@ class Server:
                     continue
                 else:
                     conn_socket.send("Success".encode())
-                    return True
-            return False
+                    return True, username
+            return False, ''
 
     def main_loop(self):
         while True:
             conn, addr = self.sock.accept()
             self.debug_print(f'{addr} - connected!')
-            threading.Thread(target=self.run, args=(conn, addr)).start()
+            threading.Thread(target=self.pre_run, args=(conn, addr)).start()
 
-    def run(self, conn, addr):
-        while not self.authentication(conn):
+    def pre_run(self, conn, addr):
+        username = ''
+        while 1:
+            state, username = self.authentication(conn)
+            if state:
+                break
             self.timer.put(conn)
             while 1:
                 self.timer.update()
@@ -131,7 +171,13 @@ class Server:
                 for r in rw:
                     _ = conn.recv(self.buf_size)
                     conn.send(f'You are blocked until {self.timer.remain(conn)} seconds\n'.encode())
-        print("Next")
+
+        user = User(username, self.timeout, conn)
+        self.run(user)
+
+    def run(self, user: User):
+        user.tcp_unit.start()
+        user.main_loop()
 
 
 s = Server(7676, 20, 20)

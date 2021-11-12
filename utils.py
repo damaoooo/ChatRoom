@@ -1,7 +1,9 @@
 import json
 import socket
+import threading
 from dataclasses import dataclass
 import select
+import queue
 
 
 @dataclass()
@@ -22,20 +24,47 @@ class CustomError(Exception):
 
 
 class TCPUnit:
-    def __init__(self, s: socket.socket):
+    def __init__(self, s: socket.socket, recv_queue: queue.Queue):
         self.sock = s
         self.split = b'\xf0\x0f'
-        self.buf_size= 4096
+        self.buf_size = 4096
+        self.queue_len = 32
+        self.die = False
+        self.recv_queue = recv_queue
+
+    def start(self):
+        threading.Thread(target=self.recv_message).start()
 
     def send_message(self, m: Message):
         b = str(m).encode()
         b += self.split
         self.sock.send(b)
 
-    def recv_message_wait(self):
-        r = self.sock.recv(self.buf_size)
-        r = r.split(self.split)[0]
-        r = json.loads(r)
+    def new_package(self, t: bytes):
+        r = json.loads(t)
         new_m = Message('', '', '')
-        new_m.__dict__ = r
-        return
+        new_m.to = r['to']
+        new_m.content = r['content']
+        new_m.type = r['type']
+        return new_m
+
+    def get_message(self):
+        return self.recv_queue.get()
+
+    def recv_message(self):
+        buffer = b''
+        while 1:
+            if self.die:
+                break
+            rw, ww, xw = select.select([self.sock], [self.sock], [self.sock], 0.1)
+            if rw:
+                r = self.sock.recv(self.buf_size)
+                if len(r) == '':
+                    continue
+                buffer += r
+                buffer = buffer.split(self.split)
+                p = buffer[0]
+                buffer = b''.join(buffer[1:])
+                p = self.new_package(p)
+                self.recv_queue.put(p)
+
