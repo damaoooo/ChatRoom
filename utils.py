@@ -6,7 +6,7 @@ import socket
 import threading
 from dataclasses import dataclass
 
-debug = True
+debug = False
 
 
 def debug_print(content):
